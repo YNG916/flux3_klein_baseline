@@ -1,0 +1,23 @@
+{
+  "url": "https://github.com/black-forest-labs/flux-3-image-klein",
+  "commit": "bfc8889a4497f846416f253a3972a1941ac698b9",
+  "files": {
+    "LICENSE": "3872c8674e0b85d5a50f3496519055cddcc479d25372953a59a80c302a332342",
+    "pyproject.toml": "34bebf17496e2e96cf204af1e8e68300a12bcacbd3d54727afd0e9d3d23f3d7e",
+    "src/flux3/__init__.py": "3b3abca628f914a41617041b8a5e550e71fde73d25dbde6e546ed49aa4ca74fc",
+    "src/flux3/autoencoder.py": "960e2a98046bcb78f2d36fbbd4848db726f14810c7887485f7e2682346f95189",
+    "src/flux3/bbox.py": "fbea10c1c53980df1665d3cb6cc6264b8f50633399bf6809c91650f1dcf4fc37",
+    "src/flux3/checkpoint.py": "a49b33fc83c391fdac6628be39ca3748c88bfd8e63b731f997d2f161d5ef9be3",
+    "src/flux3/dit.py": "d4c0d2aea5282ae63ac32a1f3029a738ddab951bb1033d6f3a2e9bd192c89934",
+    "src/flux3/fp8.py": "25d426251a6cb862452a380cd7e644443f04cb4d3390fe2b327fb9202054fc23",
+    "src/flux3/generate.py": "07b4fe53d2b26f7068cb0e6cd22f2dd0e685245bc1fee2eb9130d1210a2badd5",
+    "src/flux3/nvfp4.py": "6d4e2e0cc1652f503e9b44284fdb110a1741de2d5bced803add8db09ba6348a3",
+    "src/flux3/pipeline.py": "d28d60ca680241f7b5ae1b90d83eb6218af5ea51b91ee69214bd266ec10bccb1",
+    "src/flux3/pup.py": "e3561ae3cbff1a080ad8854c0b89bd0687c1ea9d84c74f5203b44844cbd4684d",
+    "src/flux3/pup_prompts.json": "b5da3ed8bc04ab59dbdb747930f7dbff847e868903fed8028f85ee1a4ac82fb4",
+    "src/flux3/pup_prompts_external_vlm.json": "361bb6e081d50e54a3dee9abf26327436a9386c83465f881c7848989232028be",
+    "src/flux3/safety.py": "8af6f79384c82a364c551b3f371c7e1705721adc4fc6b466c124f8dd38dd9bc3",
+    "src/flux3/sampling.py": "22be0d823fb6a2c5bc993c77fe0836ca729219d34cc08e86d01a398e04bdcdf5",
+    "src/flux3/text_encoder.py": "3bce784f43b8e8d9eee0dab75d928006398efd80e77f9f179bba6ddd28ffe74b"
+  }
+}

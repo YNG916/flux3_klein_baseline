@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+set -euo pipefail
+repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+workspace_root="${MULTIVIEW_STORAGE_ROOT:-$(cd "$repo_root/../.." && pwd -P)}"
+export MULTIVIEW_STORAGE_ROOT="$workspace_root"
+export HF_HOME="${HF_HOME:-$workspace_root/cache/huggingface}"
+export TORCH_HOME="${TORCH_HOME:-$workspace_root/cache/torch}"
+export XDG_CACHE_HOME="${XDG_CACHE_HOME:-$workspace_root/cache}"
+export PIP_CACHE_DIR="${PIP_CACHE_DIR:-$workspace_root/cache/pip}"
+export PYTHONPATH="$repo_root/vendor/flux3/src:$repo_root${PYTHONPATH:+:$PYTHONPATH}"
+export HF_HUB_OFFLINE="${HF_HUB_OFFLINE:-1}"
+export PYTHONDONTWRITEBYTECODE=1
+export OMP_NUM_THREADS="${OMP_NUM_THREADS:-4}"
+export MKL_NUM_THREADS="${MKL_NUM_THREADS:-4}"
+task_python="${FLUX_PYTHON:-$workspace_root/envs/flux3-klein/bin/python}"
+cd -- "$repo_root"
+exec "$task_python" -m tools.workflow "$@"

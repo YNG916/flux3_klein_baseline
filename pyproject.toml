@@ -1,0 +1,8 @@
+[project]
+name = "flux3-mvwd-baseline"
+version = "0.1.0"
+description = "Native FLUX 3 Image Klein Base baseline for MVWD Level 1"
+requires-python = ">=3.11,<3.13"
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = [".", "vendor/flux3/src"]

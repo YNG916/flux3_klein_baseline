@@ -1,0 +1,11 @@
+# Core runtime only: native FLUX, Transformers prompt upsampler; no Gradio/vLLM needed.
+torch==2.11.0
+torchvision==0.26.0
+triton==3.6.0
+transformers==5.8.1
+tokenizers==0.22.2
+accelerate==1.13.0
+safetensors==0.8.0rc0
+pillow==10.3.0
+numpy==2.3.5
+pytest==8.4.2
