@@ -55,7 +55,12 @@
     "max_new_tokens": 2048,
     "batch_size": 16,
     "backend": "vllm",
-    "memory_fraction": 0.75
+    "memory_fraction": 0.75,
+    "overflow": {
+      "policy": "concise_retry_then_exact_v1",
+      "retry_max_new_tokens": 512,
+      "retry_repetition_penalty": 1.1
+    }
   },
   "cache": {
     "text_mode": "online"

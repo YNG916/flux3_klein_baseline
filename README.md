@@ -96,7 +96,7 @@ exp=my_l1_full10ep_4h100
 ./mvwd full "$exp" --stage train --epochs 10
 ```
 
-`all` 依次生成 train/val captions、编码 latent、训练。当前 H100 配方用四个相互隔离的 vLLM replica，每卡最多16条并发；attention 和 GDN prefill 显式选择 Triton，不依赖节点安装 nvcc。caption/latent 缓存逐 query 原子提交、校验后续写；失败/重试各有独立日志。全量特征缓存默认保存 latent 和文本，冻结文本编码器在线运行，避免海量 20,480 维 embedding I/O。`cache.text_mode=cached` 可缓存完整 BF16 文本特征，用磁盘换取训练计算；需要新实验并先测容量。参见 [训练实现](docs/TRAINING.md)。
+`all` 依次生成 train/val captions、编码 latent、训练。当前 H100 配方用四个相互隔离的 vLLM replica，每卡最多16条并发；attention 和 GDN prefill 显式选择 Triton，不依赖节点安装 nvcc。caption/latent 缓存逐 query 原子提交、校验后续写；失败/重试各有独立日志。H100模板显式配置`concise_retry_then_exact_v1`：仅对超长/空输出重试一次（最多512tokens，repetition penalty1.1）；仍失败则使用完整原始任务约束加固定相机视图指令，不使用截断的扩写。逐query保存所有原始尝试、终止原因和`caption_status`，质量报告应披露重试/降级比例。GPU引擎错误仍直接报错。全量特征缓存默认保存 latent 和文本，冻结文本编码器在线运行，避免海量 20,480 维 embedding I/O。`cache.text_mode=cached` 可缓存完整 BF16 文本特征，用磁盘换取训练计算；需要新实验并先测容量。参见 [训练实现](docs/TRAINING.md)。
 
 需要后台排队时，显式提交：
 
@@ -105,6 +105,8 @@ exp=my_l1_full10ep_4h100
 ./mvwd batch "$exp" --stage all
 ./mvwd batch "$exp" --stage train --after JOB_ID
 ```
+
+从登录节点复用已有allocation可显式运行`./slurm/existing_allocation.sh JOB_ID EXP all 10`，它保留驱动日志和脚本快照；不会申请新作业。
 
 Slurm 模板在 `slurm/`：4×H100、64 CPU、384G、48h，账号与分区可按集群调整。仅 `batch` 或手工 `sbatch` 会提交；普通命令不申请 GPU。完整 checkpoint 每 1,000 updates、每 epoch 和正常结束保存；异常中断回退到最近已完整写入的 checkpoint。
 
@@ -119,6 +121,7 @@ Slurm 模板在 `slurm/`：4×H100、64 CPU、384G、48h，账号与分区可按
 | `profile / train EXP NAME -- …` | 显式 GPU 性能测量 / 训练与完整恢复 |
 | `infer EXP NAME -- …` | GT-free 生成，再自动导出对照 |
 | `eval / review EXP NAME -- …` | 评估已有预测 / 重建或校验浏览页 |
+| `import-captions EXP NAME -- --source-experiment OLD --split train` | 受限的v2成功提示词迁移，逐条校验并保留来源，不复用训练checkpoint |
 | `full EXP --stage plan/caption/prepare/train/all` | 全量计划与可恢复流水线 |
 | `status [EXP]` | 自动实验索引与报告 |
 

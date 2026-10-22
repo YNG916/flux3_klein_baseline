@@ -14,7 +14,7 @@ import traceback
 from flux_mvwd.common import file_hash, load_config, read_json, write_json
 
 ROOT = Path(__file__).resolve().parent
-KINDS = {"select": "selections", "inspect": "diagnostics", "prepare": "features", "train": "training", "infer": "predictions", "evaluate": "evaluations", "caption": "captions", "review": "reports", "profile": "diagnostics", "camera_plan": "diagnostics"}
+KINDS = {"import_captions": "captions", "select": "selections", "inspect": "diagnostics", "prepare": "features", "train": "training", "infer": "predictions", "evaluate": "evaluations", "caption": "captions", "review": "reports", "profile": "diagnostics", "camera_plan": "diagnostics"}
 
 
 def utc():

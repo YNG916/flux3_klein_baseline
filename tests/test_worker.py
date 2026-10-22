@@ -36,3 +36,67 @@ def test_camera_view_policy_preserves_exact_request_and_legacy_policy():
     assert new.endswith(original)
     assert "specified mounted robot camera" in new
     assert "not the desired output viewpoint" in new
+
+
+from flux_mvwd.caption_worker import generate_resilient, format_caption, overflow_settings
+
+
+def choice(text, reason='stop', tokens=3):
+    return SimpleNamespace(outputs=[SimpleNamespace(text=text, finish_reason=reason, token_ids=[1] * tokens)])
+
+
+class ScriptedEngine:
+    def __init__(self, *responses):
+        self.responses = iter(responses)
+        self.calls = []
+    def generate(self, requests, params, **kwargs):
+        self.calls.append((requests, params.max_tokens))
+        return next(self.responses)
+
+
+def test_retry_targets_only_failed_queries_and_preserves_all_attempts():
+    engine = ScriptedEngine([choice('normal'), choice('repeat', 'length', 2048), choice('')],
+                            [choice('concise'), choice('still long', 'length', 512)])
+    result = generate_resilient(engine, ['a', 'b', 'c'], SimpleNamespace(max_tokens=2048),
+        retry_requests=['ra', 'rb', 'rc'], retry_params=SimpleNamespace(max_tokens=512))
+    assert engine.calls == [(['a', 'b', 'c'], 2048), (['rb', 'rc'], 512)]
+    assert [x['caption_status'] for x in result] == ['ok', 'retry_ok', 'exact_request_fallback']
+    assert result[1]['attempts'][0]['caption'] == 'repeat'
+    assert result[2]['attempts'][1]['output_tokens'] == 512
+
+
+def test_engine_errors_are_not_masked_as_caption_fallback():
+    engine = ScriptedEngine([choice('aborted', 'abort')])
+    with pytest.raises(RuntimeError, match='finish reason'):
+        generate_resilient(engine, ['a'], SimpleNamespace(max_tokens=2048),
+            retry_requests=['ra'], retry_params=SimpleNamespace(max_tokens=512))
+    assert len(engine.calls) == 1
+
+
+def test_legacy_policy_still_rejects_incomplete_outputs():
+    engine = ScriptedEngine([choice('truncated', 'length')])
+    result = generate_resilient(engine, ['a'], SimpleNamespace(max_tokens=2048))
+    assert result[0]['caption_status'] == 'failed' and len(engine.calls) == 1
+    with pytest.raises(ValueError, match='did not finish'):
+        format_caption(None, result[0], 'camera geometry')
+
+
+def test_fallback_keeps_full_geometry_and_does_not_use_truncated_prose():
+    exact = 'K=[100,0,32]; T=[1,2,.8]; robots=' + 'original;' * 100
+    processor = SimpleNamespace(apply_chat_template=lambda messages, **kw: messages[0]['content'],
+        tokenizer=lambda text: {'input_ids': list(text)})
+    item = {'caption_status': 'exact_request_fallback', 'caption': 'TRUNCATED garbage',
+            'finish_reason': 'length', 'attempts': [{'caption': 'TRUNCATED garbage'}]}
+    record = format_caption(processor, item, exact)
+    assert record['prompt'].endswith(exact) and 'TRUNCATED' not in record['prompt']
+    assert record['raw_upsampler_caption'] == 'TRUNCATED garbage'
+    assert not record['upsampler_caption_used'] and record['upsampler_attempts'] == item['attempts']
+
+
+@pytest.mark.parametrize('settings', [
+    {'policy':'unknown', 'retry_max_new_tokens':512},
+    {'policy':'concise_retry_then_exact_v1','retry_max_new_tokens':0},
+    {'policy':'concise_retry_then_exact_v1','retry_max_new_tokens':512,'retry_repetition_penalty':.5}])
+def test_recovery_config_rejects_invalid_settings(settings):
+    with pytest.raises(ValueError, match='overflow policy'):
+        overflow_settings({'prompt': {'overflow': settings}})

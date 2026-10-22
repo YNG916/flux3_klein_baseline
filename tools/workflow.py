@@ -12,7 +12,7 @@ from flux_mvwd.common import read_json, write_json, file_hash
 
 ROOT = Path(__file__).resolve().parents[1]
 EXPERIMENTS = ROOT / "artifacts/mvwd/experiments"
-KINDS = {"select": "select", "inspect": "inspect", "caption": "caption", "prepare": "prepare", "train": "train",
+KINDS = {"import-captions": "import_captions", "select": "select", "inspect": "inspect", "caption": "caption", "prepare": "prepare", "train": "train",
          "infer": "infer", "eval": "evaluate", "review": "review", "profile": "profile", "diagnose": "camera_plan"}
 
 

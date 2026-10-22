@@ -6,10 +6,13 @@ from .common import load_config
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
-    for name in ("select", "inspect", "caption", "prepare", "train", "infer", "evaluate", "review", "profile", "camera_plan"):
+    for name in ("import_captions", "select", "inspect", "caption", "prepare", "train", "infer", "evaluate", "review", "profile", "camera_plan"):
         p = commands.add_parser(name)
         p.add_argument("--config", required=True)
         p.add_argument("--output", required=True)
+        if name == "import_captions":
+            p.add_argument("--source-experiment", required=True)
+            p.add_argument("--split", choices=("train", "val"), default="train")
         if name in ("select", "inspect", "caption", "prepare", "infer", "camera_plan"):
             p.add_argument("--split", choices=("train", "val", "test"), default="train")
             p.add_argument("--scene", nargs="+")
@@ -59,7 +62,10 @@ def main():
             p.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
     config = load_config(args.config)
-    if args.command == "select":
+    if args.command == "import_captions":
+        from tools.caption_recovery import import_captions
+        import_captions(config, args)
+    elif args.command == "select":
         from .selection import select
         select(config, args)
     elif args.command == "inspect":

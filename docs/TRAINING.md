@@ -31,3 +31,12 @@ Slurm 中断后用 `./mvwd full EXP --stage train` 找最近 complete checkpoint
 测试过的norm/RoPE融合候选虽然更快，但没有通过固定输入与初始adapter的梯度对照，因此未纳入正式代码或配置；正式训练保留原生算术。失败与候选源码只在旧smoke实验的source/gpu_probes及诊断日志中追溯。
 
 `loss.jsonl`另记录update_compute_seconds与update_samples_per_second：从每次累积更新的首个batch已就绪起计时，包含后续累积数据等待和GPU计算，不含之前的checkpoint/验证或首个batch获取时间。原elapsed_seconds与samples_per_second仍保留完整累计墙钟口径；首步编译/初始化不能作为稳态吞吐。
+
+
+## 个别超长提示词恢复
+
+H100配方显式记录`prompt.overflow.policy=concise_retry_then_exact_v1`。首次请求仍使用相同官方scaffold、输入、2048token上限与sampling设置；仅对`length`或空输出进行一次精简请求，最多512tokens、repetition penalty1.1。若仍未正常结束，使用固定相机视图指令加未经改动的全部原始任务/相机约束，拒绝将截断的生成文本送入训练。该query标记`exact_request_fallback`与`upsampler_caption_used=false`；所有尝试的原文、token数和终止原因都保存。`retry_ok`标记重试成功；CUDA/引擎异常不转成降级样本。
+
+此修复改变源码和配置，必须建立新实验。`./mvwd import-captions NEW NAME -- --source-experiment OLD --split train`只支持已审计的497044e实现，且只允许增加overflow策略；逐条检查冻结源码、配置、环境、query支持、BEV内容/相机约束和缓存哈希，在新缓存写入来源，不覆盖旧缓存，也不伪造完整manifest。不迁移特征、优化器或checkpoint。原生训练算术、数据与预算不变。
+
+2026-10-22：44项CPU测试通过；真实H100故意设首次上限1token，分别验证连续超长降级和精简重试成功，完整相机约束均保留。该故障注入使用临时覆盖参数，不是正式训练配方。
