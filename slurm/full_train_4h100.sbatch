@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#SBATCH --account=hk-project-test-p0029577
+#SBATCH --account=hk-project-test-p0029885
 #SBATCH --partition=gpu-h100
 #SBATCH --job-name=flux3-mvwd
 #SBATCH --nodes=1

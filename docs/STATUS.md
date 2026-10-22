@@ -1,19 +1,65 @@
-# 当前状态：2026-10-21
+# 当前状态：2026-10-22
 
-代码、环境和固定权重均位于 multiview workspace。Base 已在用户完成 Hugging Face 登录后下载，约 20.30 GB；prompt upsampler 约 18.84 GB。GPU allocation 尚未提供，未启动长训或提交 Slurm 作业。
+代码、独立 Python 环境、固定权重、缓存与实验均在 multiview workspace；`origin` 是用户仓库 `YNG916/flux3_klein_baseline`。已使用用户提供的 job **93041 / hkn0909 / 4×H100 94GiB** 做小规模真实 GPU 验证，没有提交新作业或启动全量长训。
 
-本机已创建 `20261021_l1_smoke`（`cpu_inputs` 和 `camera_inputs` 均完成且未读取 GT）及 `20261021_l1_full10ep_4h100_v1`（冻结配置/源码和全量训练计划）。无需重复 init；先 `./mvwd status` 查看。所有 GPU 阶段尚未运行。
+本机推荐实验：
 
-全量计划是 111,582 queries/epoch、effective batch32、3,487 updates/epoch、10 epochs。在线文本方案的 latent tensor payload 在去重前约 train75.75 GB / val5.50 GB；这不含 prompt、zip、manifest 等开销，实际容量以小样本 manifest 为准。
+- `20261022_l1_gpu_smoke_v2`：覆盖全部40个训练场景的240 queries、全部3个验证场景的18 queries；原生模型、camera-view-v2 prompt、vLLM、关闭 gradient checkpointing。
+- `20261022_l1_full10ep_4h100_v2`：同配置/源码已冻结，全量计划已生成，供用户启动。111,582 queries/epoch，有效batch32，3,487 updates/epoch，10 epochs 共34,870 updates。
+- `20261021_l1_smoke` 与 `20261021_l1_full10ep_4h100_v1` 保留历史源码和产物。旧实验不能用变更后的当前源码追加 GPU 步骤；查看其 source 快照，或使用原 Git commit `55ad4de` 的独立 checkout。
 
-已完成：
+## 已验证内容
 
-- 33 项 CPU tests：GT-free 数据/相机条件、固定采样与 seed、split/asset 防篡改、原生 DiT LoRA 梯度、Packed 样本隔离、非 reentrant checkpointing、在线文本的 inference-tensor 转换、caption token 预算、缓存恢复、完整训练恢复、验证 RNG 隔离、PSNR 评估适配和 GT/BEV 导出。
-- 原生小 DiT 的两进程 CPU/gloo DDP：两个 optimizer updates 后，所有 adapter 参数在两个 rank 逐位相同；启用 block gradient checkpointing。
-- 实际 Base 357 个权重张量、VAE 251 个张量的 key 和 shape 与固定官方代码逐项匹配。原生 DiT 为 5,538,458,368 参数；这些是文件/结构检查，不是预训练模型 GPU 前向。
-- 实际 upsampler processor 的单样本与多样本两图输入检查，模型配置可构建其 9B meta 模型；未执行该预训练模型的生成。
-- 核对 train / val / test 为 111,582 / 8,100 / 20,028 个固定 query。正式数据和相邻基线未修改。
+**36项 CPU tests 全通过**，包含实际共享指标代码集成；另外已有两进程 CPU/gloo 原生小 DiT DDP 对照。测试覆盖 GT-free 输入、相机干预、固定采样、跨样本 attention 隔离、LoRA 梯度、checkpointing、缓存恢复、完整状态恢复、验证 RNG 隔离、指标和对照导出，以及 vLLM 进程隔离/失败检测。CPU 测试报告在本机 `verification/gpu_update_cpu_tests_20261022.xml`。
 
-下一步在用户提供的 tmux GPU 节点中，先运行 `./mvwd doctor` 检查 CUDA 13 驱动兼容，再按 README 的 smoke 路径验证实际 caption、latent、2→4 步训练恢复、单/四卡吞吐与显存、固定 val 图像和评估。吞吐最优 microbatch、是否关闭 checkpointing，以及在线/缓存文本的取舍，都需要真实硬件测量。
+真实 GPU 已完成：固定 Base / VAE / text encoder 加载、四个独立 vLLM replica、240+18条完整提示词、VAE latent 缓存、四卡DDP 2步训练及完整恢复至4步。第2步结束与恢复开始的固定18-query val flow MSE **逐值相同（0.8359332432349523）**；恢复后游标继续到16、累计128次 query 访问。checkpoint 包含 adapter、每rank AdamW/RNG/采样进度与完整性校验。
 
-尚无预训练 FLUX 的实际训练、生成质量或正式 test 指标；不能从 CPU 小模型或完整代码推导模型已收敛、几何遵从或配置已最优。长训由用户明确启动。
+当前 v2 的240条训练提示词为2,246～2,632个native text tokens，没有截断几何、没有读取GT。实际 train latent/prompt 缓存143.58MB，约598.25KB/query；full plan另保存去重前tensor容量上界，不能把小样本均摊量当作全量精确容量。
+
+固定验证集的50步CFG4生成、相同seed零样本参照、独立GT/BEV浏览页和四指标已全部完成，13个步骤均exit0。源码、上游、checkpoint与预测像素哈希审计通过。生成期间不加载GT；完整生成后review/metrics才有独立GT访问记录。
+
+本机浏览：[GPU验证报告](../artifacts/mvwd/experiments/20261022_l1_gpu_smoke_v2/reports/GPU_VALIDATION.md) · [4步LoRA对照](../artifacts/mvwd/experiments/20261022_l1_gpu_smoke_v2/predictions/val_s4_seed42/index.html) · [同条件零样本对照](../artifacts/mvwd/experiments/20261022_l1_gpu_smoke_v2/predictions/val_zeroshot_seed42/index.html)。产物不进入Git。
+
+18张val、seed42的工程preview：PSNR **10.6273dB**，LPIPS **0.79038**，FID **378.936**，MV-GTWarp-DINO **0.71427**（6个有效相机对）。这不是正式test，也不是收敛模型成绩；18张的FID尤其不适合模型排名。
+
+## 资源测量与当前配方
+
+单卡小缓存、完整optimizer更新（不含累积）的原生算子测量：
+
+| 配置 | queries/s | 峰值allocated GiB | 结论 |
+|---|---:|---:|---|
+| checkpointing开启，batch2 | 1.275 | 23.47 | 可用于较小显存 |
+| checkpointing开启，batch4 / 8 / 16 | 1.187 / 1.231 / 1.271 | 28.07 / 36.67 / 51.94 | 增大batch未提高单卡吞吐 |
+| checkpointing关闭，batch2 | 1.667 | 65.53 | 当前H100配方 |
+| checkpointing关闭，batch4 / 8 | OOM | — | 不采用 |
+
+当前四卡DDP每次更新含2×4×4=32 queries：短测更新耗时约**5.14～5.60秒**（首步6.66秒），合计约**5.72～6.22 queries/s**；主rank峰值allocated约64.8GiB、reserved最高71.4GiB。这些是4次更新的工程测量，不代表长程稳态或所有rank最坏显存。vLLM每卡16条的后续热batch约4.8～5.3秒，首批约19秒，另有模型初始化时间。
+
+norm/RoPE融合候选没有通过梯度对照，**未采用**。正式代码保留原生算术，不能以候选更快的数字宣传正式训练吞吐。旧smoke实验保留候选源码、失败日志和测量记录。
+
+按上述小样本吞吐外推，10epochs仅计算约50～54小时，尚不含全量缓存、验证、I/O与checkpoint；48小时allocation预计需要续节点。当前节点足够完成工程检查，无需立即再排。周期checkpoint和`full --stage train`支持下一个同规格四卡allocation继续。
+
+## 本机正式启动
+
+在用户的四卡交互节点/tmux中：
+
+```bash
+cd ~/multiview_baselines/flux3_klein
+./mvwd doctor
+./mvwd full 20261022_l1_full10ep_4h100_v2 --stage all --epochs 10
+```
+
+若从登录节点复用当前 allocation，在命令前使用：
+
+```bash
+srun --jobid=93041 --overlap --nodes=1 --ntasks=1 --cpus-per-task=64 --gres=gpu:4 \
+  --chdir="$PWD" ./mvwd full 20261022_l1_full10ep_4h100_v2 --stage all --epochs 10
+```
+
+缓存完整后，后续allocation使用`--stage train`；缓存未完成则重跑`--stage all`，逐query校验续写。配置、代码、依赖、world size不应在同一次实验中改变。需要重新排队时由用户显式使用`./mvwd batch ...`。
+
+## 质量限制
+
+四步训练只证明链路、数值和恢复可用，**没有完成任务适配，也没有正式test指标**。旧v1的四步训练集出图仍偏向俯视房屋，12张preview PSNR约9.49dB。v2强化了同一允许输入下的机器人相机视角请求，但检查其四步验证集对照图后，仍可见明显俯视/高视点偏差，与GT相机和机器人外观不匹配。因此目前是工程验证通过、生成质量未通过；精确视点、场景与机器人一致性仍需训练后验证，不能从flow MSE或prompt文本推导。
+
+正式test要求固定全量20,028个queries、seeds42/43/44和原有四指标；小规模preview的FID/几何分数只能用于工程排查，不能作为baseline正式成绩。此RGB监督方法与含depth监督的Top2Pano需要明确区分。

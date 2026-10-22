@@ -2,6 +2,8 @@
 from pathlib import Path
 import gc
 import time
+import copy
+import itertools
 from .common import read_json, digest, write_json
 
 
@@ -22,13 +24,18 @@ def profile(config, args):
     device = torch.device("cuda")
     samples = FeatureDataset(args.cache, receipt["samples"])
     text_encoder = load_text_encoder(config, device) if receipt.get("text_mode") == "online" else None
-    for batch in args.batches:
+    def variants(flag, configured):
+        return [configured] if flag == "config" else ([True, False] if flag == "both" else [flag == "on"])
+    checkpoints = variants(getattr(args, "checkpointing", "config"), settings["gradient_checkpointing"])
+    for use_checkpoint, batch in itertools.product(checkpoints, args.batches):
         model = optimizer = None
-        row = {"micro_batch": batch, "gradient_checkpointing": settings["gradient_checkpointing"]}
+        row = {"micro_batch": batch, "gradient_checkpointing": use_checkpoint, "cfg_dropout": 0.0}
         try:
-            model = load_dit(config, device)
+            effective = copy.deepcopy(config)
+            effective["training"].update(gradient_checkpointing=use_checkpoint, cfg_dropout=0.0)
+            model = load_dit(effective, device)
             inject(model, settings["rank"], settings["alpha"])
-            if settings["gradient_checkpointing"]:
+            if use_checkpoint:
                 gradient_checkpointing(model)
             model.train()
             params = [p for p in model.parameters() if p.requires_grad]
@@ -40,7 +47,7 @@ def profile(config, args):
                 torch.cuda.synchronize(); started = time.perf_counter()
                 optimizer.zero_grad(set_to_none=True)
                 with torch.autocast("cuda", dtype=torch.bfloat16):
-                    loss = flow_loss(model, data, settings, device, text_encoder=text_encoder)
+                    loss = flow_loss(model, data, effective["training"], device, text_encoder=text_encoder)
                 if not torch.isfinite(loss):
                     raise FloatingPointError("Nonfinite profile loss")
                 loss.backward()
@@ -49,7 +56,7 @@ def profile(config, args):
                 torch.cuda.synchronize()
                 if step >= args.warmup:
                     times.append(time.perf_counter() - started)
-            row.update(status="ok", seconds_per_update=sum(times)/len(times),
+            row.update(status="ok", warmup_updates=args.warmup, timed_updates=args.repeats, seconds_per_update=sum(times)/len(times),
                 samples_per_second=batch * len(times)/sum(times),
                 peak_allocated_gib=torch.cuda.max_memory_allocated()/2**30,
                 peak_reserved_gib=torch.cuda.max_memory_reserved()/2**30)
@@ -62,5 +69,5 @@ def profile(config, args):
             gc.collect(); torch.cuda.empty_cache()
         results.append(row)
         write_json(output / "profile.json", {"device": torch.cuda.get_device_name(), "config": config,
-            "results": results, "scope": "single-GPU complete optimizer updates, not a four-GPU scaling measurement"})
+            "results": results, "scope": "single-GPU full optimizer updates, all-conditional tokens; disposable profile overrides are recorded per row; not a four-GPU scaling measurement"})
         print(row, flush=True)

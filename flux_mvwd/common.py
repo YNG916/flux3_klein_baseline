@@ -72,6 +72,12 @@ def load_config(path):
         raise ValueError("micro_batch_size must be a positive integer")
     if type(settings.get("gradient_checkpointing", True)) is not bool:
         raise ValueError("gradient_checkpointing must be boolean")
+    if config["prompt"].get("backend", "transformers") not in ("transformers", "vllm"):
+        raise ValueError("Unknown prompt backend")
+    if not 0 < config["prompt"].get("memory_fraction", .75) < 1:
+        raise ValueError("Prompt memory fraction must be in (0,1)")
+    if config["prompt"].get("backend") == "vllm" and config["prompt"].get("batch_size", 4) > 16:
+        raise ValueError("Official vLLM recipe supports up to 16 queries per replica batch")
     if config["model"]["id"] != "black-forest-labs/flux-3-image-klein-base":
         raise ValueError("Train the Base model, not the distilled flow map")
     for key in ("revision", "upsampler_revision", "upstream_commit"):
@@ -82,7 +88,7 @@ def load_config(path):
         raise ValueError("CFG dropout must be in [0, 1)")
     if settings.get("shift", 16) <= 0 or settings.get("logit_std", 1) <= 0:
         raise ValueError("Invalid flow timestep distribution")
-    if config.get("prompt", {}).get("policy") != "official_pup_plus_exact_geometry_v1":
+    if config.get("prompt", {}).get("policy") not in ("official_pup_plus_exact_geometry_v1", "official_pup_camera_view_v2"):
         raise ValueError("Use the recorded official upsampler policy")
     if config.get("cache", {}).get("text_mode", "cached") not in ("online", "cached"):
         raise ValueError("cache.text_mode must be online or cached")

@@ -14,7 +14,7 @@
 
 目标 256×448 保持完整视野，不裁剪；K 随 resize 更新。BEV 等比例 letterbox 并更新标定。世界坐标米制 Z-up，CV 相机右/下/前。所有条件在训练、推理和导出时使用同一 adapter。
 
-Prompt upsampling 使用固定官方 9B 权重、system prompt、reference JPEG/resize 策略与 i2i scaffold，通过 Transformers greedy decoding 批量生成；不是绕过 upsampler 的原始短 prompt。然后原样附加精确条件文本，避免 VLM 改写 K/T/机器人数值。这是 MVWD 任务适配，不能描述成逐位复现官方 vLLM 输出。原始条件/完整 upsampler caption/实际模型 prompt/策略和 hash 都保留。按真实文本 tokenizer 的 4,096-token 上限显式缩短派生 caption，receipt 记录是否缩短及实际长度；精确条件不截断。若精确条件本身超限则拒绝。
+Prompt upsampling 使用固定官方 9B 权重、system prompt、reference JPEG/resize 策略与 i2i scaffold，提供旧版 Transformers greedy decoding 与当前四卡 vLLM 批处理后端；vLLM使用 temperature=0、i2i presence penalty=0 及官方 scaffold。当前相机视图v2在原始请求前明确要求指定机器人相机的地面视角，禁止将地图本身当作输出视角，不新增条件或监督。不是绕过 upsampler 的原始短 prompt。然后原样附加精确条件文本，避免 VLM 改写 K/T/机器人数值。这是 MVWD 任务适配，不能描述成逐位复现官方 vLLM 输出。原始条件/完整 upsampler caption/实际模型 prompt/策略和 hash 都保留。按真实文本 tokenizer 的 4,096-token 上限显式缩短派生 caption，receipt 记录是否缩短及实际长度；精确条件不截断。若精确条件本身超限则拒绝。
 
 推理仅访问条件和 GT-free captions，不使用 train/val feature 缓存，更不构建 test target cache。全部预测写完并标记 complete 后，独立 review 才能读 GT；生成 metadata 永远记录 `ground_truth_loaded=false`，review 另存 receipt。预测像素和既有导出不允许静默覆写。
 

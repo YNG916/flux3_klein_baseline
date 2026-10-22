@@ -1,0 +1,63 @@
+{
+  "dataset_root": "/path/to/MultiViewWorldDataset_v1",
+  "mode": "independent",
+  "robots": [
+    0,
+    1,
+    2
+  ],
+  "frames_per_episode": 2,
+  "frame_sample_seed": 42,
+  "bev_size": 512,
+  "target_hw": [
+    256,
+    448
+  ],
+  "camera_conditioning": "bev_frustum_text_v1",
+  "model": {
+    "id": "black-forest-labs/flux-3-image-klein-base",
+    "revision": "3f7fa5ee22ca1d5a5cc095ac7cc96e6a173b4c86",
+    "upsampler_id": "black-forest-labs/flux-3-image-klein-pup",
+    "upsampler_revision": "3f3edb52b2c55de0d49feab28598b68f7f8e4830",
+    "upstream_commit": "bfc8889a4497f846416f253a3972a1941ac698b9"
+  },
+  "training": {
+    "rank": 32,
+    "alpha": 32,
+    "learning_rate": 5e-05,
+    "weight_decay": 0.01,
+    "gradient_accumulation_steps": 4,
+    "max_steps": 34870,
+    "epochs": 10,
+    "checkpoint_every": 1000,
+    "seed": 42,
+    "micro_batch_size": 2,
+    "gradient_checkpointing": false,
+    "workers": 4,
+    "prefetch_factor": 2,
+    "cfg_dropout": 0.1,
+    "max_grad_norm": 1.0,
+    "timestep_sampling": "logit_normal",
+    "logit_mean": 0.0,
+    "logit_std": 1.0,
+    "shift": 16.0,
+    "attention_backend": "auto",
+    "fused_optimizer": true,
+    "validate_every": 1000
+  },
+  "inference": {
+    "steps": 50,
+    "guidance": 4.0,
+    "shift": 16.0
+  },
+  "prompt": {
+    "policy": "official_pup_camera_view_v2",
+    "max_new_tokens": 2048,
+    "batch_size": 16,
+    "backend": "vllm",
+    "memory_fraction": 0.75
+  },
+  "cache": {
+    "text_mode": "online"
+  }
+}

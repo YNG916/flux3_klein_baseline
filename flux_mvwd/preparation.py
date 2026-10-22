@@ -22,6 +22,16 @@ def input_key(condition):
     return digest({"prompt": condition["prompt"], "images": images})
 
 
+def upsampler_instruction(prompt, config):
+    if config["prompt"]["policy"] == "official_pup_camera_view_v2":
+        return ("Write an instruction for a ground-level perspective RGB photograph taken by the specified mounted robot camera. "
+            "The reference images are top-down maps used to reconstruct the environment, not the desired output viewpoint. "
+            "Use the requested camera position, mast height, orientation and field of view; describe the view from inside that camera. "
+            "Do not request an elevated overview, isometric view, dollhouse, cutaway or a 3D floorplan. "
+            "Map labels and magenta camera markers are not physical scene objects. The exact geometry is supplied separately and is authoritative.\n\n" + prompt)
+    return prompt
+
+
 class PromptUpsampler:
     """Official weights, system prompt, reference policy and scaffold via Transformers.
 
@@ -51,7 +61,7 @@ class PromptUpsampler:
         messages = []
         for condition in conditions:
             images = [policy_reference(im, len(condition["images"])) for im in condition["images"]]
-            key, instruction, locked = plan(condition["prompt"], None, len(images))
+            key, instruction, locked = plan(upsampler_instruction(condition["prompt"], self.config), None, len(images))
             if locked is not None:
                 raise ValueError("Bounding boxes are outside this baseline")
             messages.append([{"role": "system", "content": self.prompts[key]}, {"role": "user", "content":
@@ -124,7 +134,12 @@ def caption(config, args):
     lock = initialize(root, info, accelerator)
     pending = [i for i, q in enumerate(selected) if i % accelerator.num_processes == accelerator.process_index
                and existing_row(root, i, q) is None]
-    upsampler = PromptUpsampler(config, accelerator.device) if pending else None
+    if config["prompt"].get("backend", "transformers") == "vllm":
+        from .caption_worker import RemoteUpsampler
+        factory = RemoteUpsampler
+    else:
+        factory = PromptUpsampler
+    upsampler = factory(config, accelerator.device) if pending else None
     batch_size = config["prompt"].get("batch_size", 4)
     for offset in range(0, len(pending), batch_size):
         indices = pending[offset:offset + batch_size]
@@ -138,6 +153,8 @@ def caption(config, args):
             write_json(root / "rows" / f"{i:07d}.json", {"query_index": i, "query": query,
                 "path": relative, "files": {relative: file_hash(root / relative)}})
         print(f"rank={accelerator.process_index} captioned={offset + len(indices)}/{len(pending)}", flush=True)
+    if upsampler is not None and hasattr(upsampler, "close"):
+        upsampler.close()
     complete(root, info, len(selected), accelerator)
     if Path(args.output) != root and accelerator.is_main_process:
         write_json(Path(args.output) / "cache.json", {"cache": str(root), "manifest_sha256": file_hash(root / "manifest.json")})

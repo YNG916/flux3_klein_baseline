@@ -22,8 +22,11 @@ def source_hash():
 
 def environment_signature():
     import importlib.metadata
-    return {name: importlib.metadata.version(name) for name in
-            ("torch", "torchvision", "transformers", "accelerate", "safetensors", "numpy", "pillow")}
+    result = {name: importlib.metadata.version(name) for name in
+              ("torch", "torchvision", "transformers", "accelerate", "safetensors", "numpy", "pillow")}
+    try: result["vllm"] = importlib.metadata.version("vllm")
+    except importlib.metadata.PackageNotFoundError: pass
+    return result
 
 
 def check_upstream(config=None):

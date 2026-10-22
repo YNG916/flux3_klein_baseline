@@ -44,6 +44,7 @@ def main():
             p.add_argument("--batches", nargs="+", type=int, default=[1, 2, 4, 8])
             p.add_argument("--warmup", type=int, default=2)
             p.add_argument("--repeats", type=int, default=3)
+            p.add_argument("--checkpointing", choices=("config", "on", "off", "both"), default="config")
         if name == "evaluate":
             p.add_argument("--predictions", nargs="+", required=True)
             p.add_argument("--metrics-repo", required=True)

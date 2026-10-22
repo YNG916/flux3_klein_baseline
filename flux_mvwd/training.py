@@ -174,6 +174,8 @@ def train(config, args):
         sampler.batches = [order[(c * world + rank) * micro:(c * world + rank + 1) * micro]
                    for c in range(progress["cursor"], per_epoch)]
         for samples in loader:
+            if progress["cursor"] % accumulation == 0:
+                update_started = time.monotonic()
             with accelerator.accumulate(model):
                 with accelerator.autocast():
                     loss = flow_loss(model, samples, settings, device, generator=generator, text_encoder=text_encoder)
@@ -197,7 +199,9 @@ def train(config, args):
             loss_sum.zero_()
             if progress["cursor"] == per_epoch:
                 progress["epoch"] += 1; progress["cursor"] = 0
-            row = {**progress, "loss": mean_loss, "elapsed_seconds": time.monotonic() - started,
+            update_seconds = time.monotonic() - update_started
+            row = {**progress, "loss": mean_loss, "update_compute_seconds": update_seconds,
+                   "update_samples_per_second": world * micro * accumulation / update_seconds, "elapsed_seconds": time.monotonic() - started,
                    "peak_allocated_gib": torch.cuda.max_memory_allocated(device) / 2**30,
                    "peak_reserved_gib": torch.cuda.max_memory_reserved(device) / 2**30,
                    "samples_per_second": (progress["step"] - start_step) * world * micro * accumulation / (time.monotonic() - started)}

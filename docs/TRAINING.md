@@ -2,7 +2,7 @@
 
 上游 commit 由 `UPSTREAM.lock.json` 固定并校验文件内容。使用原生 `flux3.dit.DiT(flow_map=False)`、Qwen3-VL 文本编码器、128 通道 VAE token、4-axis RoPE 和多参考图的负 l-axis ID。不以 FLUX 1/2 或其他 Diffusers 架构替代。
 
-每个 attention 的 q/k/v/attn_out 注入 rank=alpha=32 LoRA，骨干 BF16 冻结，adapter 与 AdamW master state 为 FP32。初始化 B=0，A=Kaiming。默认 LR=5e-5、weight decay=.01、全程恒定 LR、gradient norm clip=1；这是一套起点配置，尚未做任务超参选优。
+每个 attention 的 q/k/v/attn_out 注入 rank=alpha=32 LoRA，骨干 BF16 冻结，adapter 与 AdamW master state 为 FP32。初始化 B=0，A=Kaiming。默认 LR=5e-5、weight decay=.01、全程恒定 LR、gradient norm clip=1；H100 配方关闭 gradient checkpointing（每卡batch2实测可运行），原始通用模板保留开启选项；这是一套起点配置，尚未做任务超参选优。
 
 目标采用确定性 VAE mean 与官方 BN 标准化。只对目标加噪：`x_t=(1-t)z+t ε`，监督 velocity `ε-z`；条件 latent、text timestep 保持 0。t 先由 logit-normal(mean0,std1) 采样，再用 `16u/(1+15u)` shift。CFG text dropout=.1，unconditional 保留相同参考图；Base 推理 50 Euler steps、CFG4、同样 shift16。该时间分布是本 baseline 明确的训练选择，上游只发布推理代码，不声称复现其未公开预训练配方。
 
@@ -21,3 +21,13 @@ checkpoint 保存 adapter safetensors、每 rank AdamW、Python/NumPy/Torch/CUDA
 Slurm 中断后用 `./mvwd full EXP --stage train` 找最近 complete checkpoint。训练 worker 能在收到 TERM/USR1 后于下一 optimizer 边界保存 interrupted 状态，但 launcher/硬超时不保证留足写入时间；周期 checkpoint 是可靠恢复边界。未实现自动提前停止，也没有将达到预算标成任务收敛。
 
 实际最优配置须在目标 GPU 实测：先测每卡 microbatch 和 checkpointing，再测四卡完整更新、编码吞吐、DataLoader 等待与磁盘容量。CUDA 13 构建需要计算节点驱动支持；`doctor` 报告实际 CUDA 可用状态。CPU 数值验证不替代 CUDA 内核、DDP 速度或 GPU 显存测试。
+
+## 2026-10-22 GPU 适配
+
+新增 vLLM0.21 上游批处理后端：父进程负责固定 query 与缓存，子进程只暴露本 rank 的一张GPU并清理 Accelerate rendezvous 环境，避免四个TP=1 engine混入父进程组。通过专用响应pipe返回caption，日志仍归入同一experiment。GDN prefill选Triton，以兼容没有nvcc的H100节点。每个batch的生成时间、输出token和实际caption保留。
+
+单卡原生完整更新的初测：开启重算batch2约1.27 queries/s、峰值23.47GiB；关闭重算batch2约1.67 queries/s、峰值65.53GiB。batch4/8在关闭重算时OOM。以上是小样本热缓存测量，不能直接当作完整数据/四卡ETA。
+
+测试过的norm/RoPE融合候选虽然更快，但没有通过固定输入与初始adapter的梯度对照，因此未纳入正式代码或配置；正式训练保留原生算术。失败与候选源码只在旧smoke实验的source/gpu_probes及诊断日志中追溯。
+
+`loss.jsonl`另记录update_compute_seconds与update_samples_per_second：从每次累积更新的首个batch已就绪起计时，包含后续累积数据等待和GPU计算，不含之前的checkpoint/验证或首个batch获取时间。原elapsed_seconds与samples_per_second仍保留完整累计墙钟口径；首步编译/初始化不能作为稳态吞吐。

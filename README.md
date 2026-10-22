@@ -2,7 +2,7 @@
 
 全局 BEV → 指定机器人相机透视图的 **Level 1 baseline**。日常只用 `./mvwd`，所有环境、权重与产物放在 multiview workspace；不改动 Top2Pano、Qwen 或数据集。
 
-当前已实现数据适配、原生多参考图 DiT LoRA 训练、完整续训、推理、原有四项指标和 GT/BEV 浏览页。CPU 验证已通过；真实 H100 吞吐、显存和生成质量尚待计算节点实测，见 [当前状态](docs/STATUS.md)。Level 2 不属于当前实现。
+当前已实现数据适配、原生多参考图 DiT LoRA 训练、完整续训、推理、原有四项指标和 GT/BEV 浏览页。已完成真实四 H100 的训练、恢复和推理链路检查；当前 GPU 验证结果与质量限制见 [当前状态](docs/STATUS.md)。Level 2 不属于当前实现。
 
 ## 开始使用
 
@@ -27,6 +27,8 @@ workspace/
 
 新机器先设置 `MULTIVIEW_STORAGE_ROOT`，提供数据与共享机器人资产，运行 `git submodule update --init --recursive`，再运行 `PYTHON_BOOTSTRAP=python3.11 ./scripts/install.sh`。环境实际完整版本见 `requirements.lock.txt`。可用 `FLUX_PYTHON`、`MVWD_METRICS_PYTHON` 覆盖解释器。
 
+本机 `configs/level1.local.json` 已准备好。其他机器可复制 `configs/examples/level1_h100.json` 到该路径并修改 dataset_root；较小显存可从 `level1_independent.json` 模板开启 gradient checkpointing。
+
 首次下载权重：
 
 ```bash
@@ -44,30 +46,32 @@ HF_HUB_OFFLINE=0 ./mvwd download
 先创建实验、检查输入（CPU），再在**已有 GPU allocation** 内执行 GPU 命令：
 
 ```bash
-exp=20261021_l1_smoke
+exp=my_l1_smoke
 ./mvwd init "$exp" --config configs/level1.local.json --purpose 'L1 原生 FLUX 工程验证'
 ./mvwd inspect "$exp" inputs -- --split train --max-episodes 2 --preview-samples 3
 ./mvwd diagnose "$exp" cameras -- --split train --max-episodes 1 --max-groups 1
 
 root="artifacts/mvwd/experiments/$exp"
-./mvwd caption "$exp" train12 --processes 4 -- \
+./mvwd caption "$exp" caption_train12 --processes 4 -- \
   --split train --max-episodes 2 --max-samples 12
 ./mvwd prepare "$exp" train12 --processes 4 -- \
-  --split train --max-episodes 2 --max-samples 12 --captions "$root/captions/train12"
-./mvwd profile "$exp" batch -- --cache "$root/features/train12" --batches 1 2 4 8
+  --split train --max-episodes 2 --max-samples 12 --captions "$root/captions/caption_train12"
+./mvwd profile "$exp" batch -- --cache "$root/features/train12" --batches 1 2 4 8 --checkpointing both
 ./mvwd train "$exp" smoke2 --processes 4 -- --cache "$root/features/train12" --max-steps 2
 ./mvwd train "$exp" resume4 --processes 4 -- \
   --cache "$root/features/train12" --max-steps 4 --resume-from "$root/training/smoke2/final"
 ```
+
+`profile --checkpointing both` 在临时模型中比较开启/关闭重算，不修改冻结训练配置。
 
 `profile` 是显式 GPU 测量：包含前向、反向与 AdamW 更新，报告吞吐、峰值 allocated/reserved，逐个记录 OOM。它使用独立临时模型，不改实验 checkpoint；单卡结果不代替 DDP 吞吐测量。先实测再确定正式配置，不能据显存空闲量宣称最优 batch。
 
 验证集推理、自动对照和评估：
 
 ```bash
-./mvwd caption "$exp" val_one -- --split val --max-episodes 1
+./mvwd caption "$exp" caption_val_one -- --split val --max-episodes 1
 ./mvwd infer "$exp" val4 -- --split val --max-episodes 1 \
-  --captions "$root/captions/val_one" --lora "$root/training/resume4/final" --seed 42
+  --captions "$root/captions/caption_val_one" --lora "$root/training/resume4/final" --seed 42
 ./mvwd eval "$exp" val4_eval -- --predictions "$root/predictions/val4" \
   --metrics-repo ../top2pano --weights-dir ../top2pano/models/metrics \
   --preview --metrics psnr --device cpu
@@ -78,10 +82,10 @@ root="artifacts/mvwd/experiments/$exp"
 
 ## 公平全量训练
 
-正式训练创建独立实验。默认四卡、每卡 microbatch 2、累积 4，有效 batch 32；覆盖全部 **111,582** train queries / epoch，10 epochs，共 **34,870** optimizer updates。默认配置是待实测的起点，不是已证明的最优超参数。
+正式训练创建独立实验。默认四卡、每卡 microbatch 2、累积 4，有效 batch 32；覆盖全部 **111,582** train queries / epoch，10 epochs，共 **34,870** optimizer updates。本机配置采用实测可运行的每卡 batch2、关闭 gradient checkpointing；原生 norm/RoPE 保留。默认学习率、rank 与训练预算尚未做任务质量超参选优。
 
 ```bash
-exp=20261021_l1_full10ep_4h100_v1
+exp=my_l1_full10ep_4h100
 ./mvwd init "$exp" --config configs/level1.local.json --purpose 'L1 全量两帧公平训练'
 ./mvwd full "$exp" --stage plan
 
@@ -92,7 +96,7 @@ exp=20261021_l1_full10ep_4h100_v1
 ./mvwd full "$exp" --stage train --epochs 10
 ```
 
-`all` 依次生成 train/val captions、编码 latent、训练。caption/latent 缓存逐 query 原子提交、校验后续写；失败/重试各有独立日志。全量特征缓存默认保存 latent 和文本，冻结文本编码器在线运行，避免海量 20,480 维 embedding I/O。`cache.text_mode=cached` 可缓存完整 BF16 文本特征，用磁盘换取训练计算；需要新实验并先测容量。参见 [训练实现](docs/TRAINING.md)。
+`all` 依次生成 train/val captions、编码 latent、训练。当前 H100 配方用四个相互隔离的 vLLM replica，每卡最多16条并发；attention 和 GDN prefill 显式选择 Triton，不依赖节点安装 nvcc。caption/latent 缓存逐 query 原子提交、校验后续写；失败/重试各有独立日志。全量特征缓存默认保存 latent 和文本，冻结文本编码器在线运行，避免海量 20,480 维 embedding I/O。`cache.text_mode=cached` 可缓存完整 BF16 文本特征，用磁盘换取训练计算；需要新实验并先测容量。参见 [训练实现](docs/TRAINING.md)。
 
 需要后台排队时，显式提交：
 
@@ -132,6 +136,8 @@ artifacts/mvwd/experiments/EXP/
 ```
 
 同一次训练的续训、不同 checkpoint/seed/split 的推理、zero-shot 参照及评估均归入同一 experiment。独立训练或改变配置要新建 experiment。权重、缓存、实验和本地配置不纳入 Git。
+
+相机视图 prompt v2 使用同一允许的 BEV/相机/机器人信息，明确要求指定机器人相机中的地面视角；旧 v1 配置和历史结果保留。切换配置或源码请建立新实验。
 
 输入、监督、正式 test 及限制见 [任务协议](docs/PROTOCOL.md)。开发检查：
 
