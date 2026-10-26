@@ -110,6 +110,24 @@ exp=my_l1_full10ep_4h100
 
 Slurm 模板在 `slurm/`：4×H100、64 CPU、384G、48h，账号与分区可按集群调整。仅 `batch` 或手工 `sbatch` 会提交；普通命令不申请 GPU。完整 checkpoint 每 1,000 updates、每 epoch 和正常结束保存；异常中断回退到最近已完整写入的 checkpoint。
 
+## 训练后的正式评估
+
+当前本机10epochs训练已完成；结果和限制见[当前状态](docs/STATUS.md)。先在val做固定小样本出图/四指标检查，再评估完整test。最终模型固定为训练预算结束的checkpoint，不能根据test分数重新选模型。
+
+```bash
+# CPU预览计划，不启动GPU。
+./slurm/evaluate_existing_allocation.sh JOB_ID EXP --plan-only
+
+# 显式使用已有4卡allocation；不会提交新作业。
+./slurm/evaluate_existing_allocation.sh JOB_ID EXP
+```
+
+正式范围为20,028 views × seeds42/43/44，共60,084张，保持原生Base50steps/CFG4。启动器按100episodes分片，完整分片原样复用；失败/到时的分片保留原日志，以新attempt重算，避免一次长推理中断后全部重做。新的allocation重复同一命令会继续；不要在多个会话中同时启动同一评估。
+
+全部分片完成后逐图校验像素SHA256、条件/prompt、seed、模型、环境和完整支持集，再合并为每seed完整预测。**三个seed全部生成完成后**才调用原有四项指标、读取test GT；小样本preview不会被标为正式成绩。分片使用完整test的确定性分区，不做test子集选样。该调度不修改冻结的训练/推理实现，其自身源码哈希、分片划分、模型和参数另写入`plans/formal_evaluation.json`，脚本快照保存在experiment内。
+
+查看`reports/formal_evaluation_progress.json`、`logs/driver-eval-*.log`和`./mvwd status EXP`。初始test caption阶段的进度可看`captions/test/rows/`；总预测完成数在完整分片返回后更新。合并保留原始分片、生成记录与来源，采用hardlink避免重复存储PNG。GT/BEV浏览可先查看val对照页；全量test的原始预测与逐图/逐对指标均保留。
+
 ## 命令与产物
 
 | 命令 | 作用 |
