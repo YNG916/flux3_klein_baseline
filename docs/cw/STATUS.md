@@ -20,15 +20,16 @@
 
 ## 验证及边界
 
-- 全仓库 CPU 回归：**69 passed**。涵盖几何约定、各向异性渲染及梯度、完整损失反传、持久 leave-one-view-out、微型原生 DiT 的零初始化逐值等价、checkpoint/RNG、损坏拒绝和预测续跑。
+- 全仓库 CPU 回归：**70 passed**。涵盖几何约定、各向异性渲染及梯度、完整损失反传、持久 leave-one-view-out、微型原生 DiT 的零初始化逐值等价、checkpoint/RNG、损坏拒绝和预测续跑。
 - 真实训练数据检查：两个同步帧、六个视角，原生 VAE 缓存复用和冻结教师特征可读取；默认完整容量世界编码器的 1,536 对象、51,552 个 Gaussian、128 维特征均有限。
 - 报告位于仓库忽略的 `artifacts/cw/audits/20261117_verified/audit.json` 和 `artifacts/cw/verification/release_cpu/`；后者包含 JUnit、真实数据报告和独立 CPU 缓存验证实例。
-- **用户 GPU 仍在排队。尚未执行真实预训练 GPU 验收、CUDA 渲染反传、四卡同步或显存实测；尚未启动新方法训练，也没有新方法预测或质量指标。**
+- **真实单卡及四卡 H100 验收已通过**：allocation `132110`、节点 `hkn0922`；预训练零初始化误差为 0，完整两步反传梯度有限，所检查梯度的四卡同步差异为 0。CUDA/CPU Gaussian 输出和五类参数梯度比对通过。验收未执行 optimizer 更新；尚未启动新方法训练，也没有新方法预测或质量指标。
+- 最终验收产物在 `artifacts/cw/verification/20261117_132110_a003/`。单卡已分配显存峰值 42.49 GiB，四卡每卡 42.64–42.71 GiB；不包含 optimizer 更新后的状态和峰值。细节见 [GPU 验收记录](GPU_VALIDATION.md)。
 
-GPU 验收入口为 `slurm/cw_existing_allocation.sh JOB_ID validate-gpu ...` 和 `validate-gpu-ddp ...`；均不执行 optimizer 更新。验收通过并修复发现的问题后，才冻结正式实验并准备完整训练缓存。节点由用户提供，脚本不会申请 allocation。
+GPU 验收入口为 `slurm/cw_existing_allocation.sh JOB_ID validate-gpu ...` 和 `validate-gpu-ddp ...`；均不执行 optimizer 更新。正式长跑需要另行授权；节点由用户提供，脚本不会申请 allocation。
 
 ## 比较时必须披露
 
 新方法使用额外的训练监督，并继承已完成的 FLUX 10 epoch 权重；默认再训练 10 epoch。它与只训练一次的 baseline 不属于相同总预算。冻结训练教师与 MV 指标属于同一 DINO 家族，需要结合图像质量及独立几何检查解释结果。输出保留原 baseline 的 256×448 完整 FOV、固定测试帧和三个随机种子协议。
 
-当前交付为完整方法的实现与 CPU 验证，不能据此认定架构最优、H100 必然装得下或质量已有提升。
+当前交付为完整方法实现、CPU 验证及真实 GPU 前后向验收；不能据此认定架构最优、所有场景均能以相同显存训练或质量已有提升。

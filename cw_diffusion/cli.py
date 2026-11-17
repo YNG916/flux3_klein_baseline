@@ -84,6 +84,7 @@ def main():
                     "environment": environment_identity(),
                     "gsplat": bool(importlib.util.find_spec("gsplat")),
                     "cuda_compiler": __import__("shutil").which("nvcc"),
+                    "ninja": __import__("shutil").which("ninja"),
                     "warning": "CPU readiness only; CUDA compilation and pretrained GPU equivalence/gradient/memory measurements remain required",
                 },
                 indent=2,

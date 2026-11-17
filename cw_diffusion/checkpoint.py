@@ -32,6 +32,7 @@ def environment_identity():
         "scipy",
         "safetensors",
         "pillow",
+        "ninja",
     ]:
         try:
             versions[name] = m.version(name)

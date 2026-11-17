@@ -67,7 +67,7 @@ Default output remains **256×448, full FOV**, with the same fixed two frames/ep
   --output artifacts/cw/audits/UNIQUE_NAME
 ```
 
-`envs/cw-diffusion` reuses baseline packages read-only through a `.pth` and installs pinned additions there. `envs/flux3-klein` is not updated. CUDA compilation/cache files stay in the workspace. This cluster provides CUDA 13.0.2, matching the native Torch CUDA 13 major version; override `CW_CUDA_HOME` when appropriate.
+`envs/cw-diffusion` reuses baseline packages read-only through a `.pth` and installs pinned additions there, including the Ninja executable. `envs/flux3-klein` is not updated. CUDA compilation/cache files stay in the workspace. This cluster provides CUDA 13.0.2, matching the native Torch CUDA 13 major version; override `CW_CUDA_HOME` when appropriate. The launcher handles the cluster's `targets/x86_64-linux` CUDA header/library layout and prevents inherited CPU binding from conflicting with the supplied allocation. It defaults to H100 architecture `9.0`; override `TORCH_CUDA_ARCH_LIST` for other hardware.
 
 Before freezing a long experiment, run the explicit pretrained GPU acceptance on an allocation supplied by the user:
 
@@ -76,7 +76,7 @@ Before freezing a long experiment, run the explicit pretrained GPU acceptance on
   --config configs/cw/full.json --output artifacts/cw/verification/UNIQUE_GPU_CHECK
 ```
 
-It checks zero-adapter pretrained velocity equivalence, actual gsplat CUDA forward/backward, the full two-step method loss, nonzero world/feedback gradients and peak memory. It performs no optimizer updates. After single-GPU acceptance, use `./slurm/cw_existing_allocation.sh JOB_ID validate-gpu-ddp --config configs/cw/full.json --output artifacts/cw/verification/UNIQUE_DDP_CHECK` to verify four-rank forward/backward, synchronized gradients and per-rank memory without optimizer updates. This command is prepared but must not be represented as passed until its real report says complete.
+It checks zero-adapter pretrained velocity equivalence, actual gsplat CUDA forward/backward, CPU/CUDA anisotropic-renderer numerical and gradient agreement, the full two-step method loss, nonzero world/feedback gradients and peak memory. It performs no optimizer updates. After single-GPU acceptance, use `./slurm/cw_existing_allocation.sh JOB_ID validate-gpu-ddp --config configs/cw/full.json --output artifacts/cw/verification/UNIQUE_DDP_CHECK` to verify four-rank forward/backward, synchronized gradients and per-rank memory without optimizer updates. Both checks passed on allocation 132110; see the exact scope and results in [GPU validation](GPU_VALIDATION.md).
 
 Once GPU acceptance passes and source/config are finalized:
 
@@ -135,6 +135,6 @@ OMP_NUM_THREADS=2 MKL_NUM_THREADS=2 \
   ../../envs/cw-diffusion/bin/python -m pytest tests/cw -q
 ```
 
-The CPU renderer is an anisotropic Gaussian numerical oracle. CUDA training explicitly requires gsplat and never silently falls back to a slow approximate implementation. Its CUDA numerical agreement and the full pretrained path must be measured on H100.
+The CPU renderer is an anisotropic Gaussian numerical oracle with matching alpha cutoff and exclusive transmittance termination. CUDA training explicitly requires gsplat and never silently falls back to the CPU implementation. CPU/CUDA numerical and gradient agreement and the full pretrained path were measured on H100; these measurements do not establish optimization stability or trained quality.
 
 Method inspirations / primary references: [gsplat 1.5.3 API](https://docs.gsplat.studio/versions/1.5.3/apis/rasterization.html), [GeoNVS paper](https://arxiv.org/abs/2603.14965). The method here infers geometry from BEV and generated features; it does not assume GeoNVS's perspective-reference Gaussian prior.

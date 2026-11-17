@@ -11,6 +11,70 @@ from .checkpoint import source_identity, environment_identity
 from flux_mvwd.common import read_json, file_hash, write_json
 
 
+def validate_renderer(device):
+    """Numerical and gradient agreement with the CPU oracle at covered pixels."""
+    from .rendering import GaussianWorld, render
+
+    K = torch.tensor([[[20.0, 0, 10], [0, 20.0, 8], [0, 0, 1.0]]])
+    T = torch.eye(4)[None]
+    values = [
+        torch.tensor([[-0.1, 0.1, 2.0], [0.2, -0.1, 3.0]]),
+        torch.tensor([[1.0, 0.2, -0.1, 0.3], [1.0, -0.1, 0.3, -0.2]]),
+        torch.tensor([[0.18, 0.10, 0.14], [0.12, 0.2, 0.16]]),
+        torch.tensor([0.6, 0.35]),
+        torch.randn(2, 8, generator=torch.Generator().manual_seed(113)),
+    ]
+    values = [v.requires_grad_() for v in values]
+    cuda_values = [v.detach().to(device).requires_grad_() for v in values]
+    reference = render(
+        GaussianWorld(*values, torch.arange(2)), K, T, 16, 20, "reference"
+    )
+    actual = render(
+        GaussianWorld(*cuda_values, torch.arange(2, device=device)),
+        K.to(device),
+        T.to(device),
+        16,
+        20,
+        "gsplat",
+    )
+    mask = actual.alpha.detach().cpu() > 0.05
+    if not mask.any():
+        raise AssertionError("Gaussian oracle has no covered pixels")
+    errors = {}
+    for key in ("alpha", "depth", "features"):
+        a, b = getattr(actual, key).detach().cpu(), getattr(reference, key).detach()
+        selected = mask.expand_as(a)
+        torch.testing.assert_close(a[selected], b[selected], atol=2e-5, rtol=2e-5)
+        errors[key] = float((a - b)[selected].abs().max())
+
+    def objective(r):
+        return (
+            (r.features.square() * r.alpha).mean()
+            + (r.depth * r.alpha).mean()
+            + r.alpha.square().mean()
+        )
+
+    objective(reference).backward()
+    objective(actual).backward()
+    gradients = {}
+    for name, a, b in zip(
+        ("means", "quats", "scales", "opacity", "features"), cuda_values, values
+    ):
+        if a.grad is None or not torch.isfinite(a.grad).all() or not a.grad.norm() > 0:
+            raise AssertionError("Invalid Gaussian gradient: " + name)
+        torch.testing.assert_close(a.grad.cpu(), b.grad, atol=1e-5, rtol=1e-3)
+        gradients[name] = {
+            "norm": float(a.grad.norm()),
+            "max_cpu_difference": float((a.grad.cpu() - b.grad).abs().max()),
+        }
+    return {
+        "complete": True,
+        "max_absolute_errors": errors,
+        "gradients": gradients,
+        "comparison_support": "alpha > .05; matching CUDA alpha cutoff and transmittance termination",
+    }
+
+
 def validate(config_path, output, ddp=False):
     if not torch.cuda.is_available():
         raise RuntimeError("GPU allocation required")
@@ -54,6 +118,20 @@ def validate(config_path, output, ddp=False):
     if rank == 0:
         write_json(output / "validation.json", report)
     start = time.monotonic()
+
+    def phase(message):
+        print(
+            f"rank={rank} elapsed={time.monotonic() - start:.1f}s {message}", flush=True
+        )
+
+    phase("gsplat CUDA extension preflight")
+    from gsplat.cuda._backend import _C
+
+    if _C is None:
+        raise RuntimeError("gsplat CUDA extension unavailable")
+    phase("Gaussian CPU/CUDA numerical and gradient equivalence")
+    report["renderer_oracle"] = validate_renderer(device)
+    phase("loading real train conditions and supervision")
     from flux_mvwd.backend import load_dit, load_text_encoder, checked_text
     from flux_mvwd.lora import inject, load_adapter
     from flux_mvwd.cache import FeatureDataset
@@ -80,6 +158,7 @@ def validate(config_path, output, ddp=False):
     indices.sort(key=lambda i: manifest["samples"][i]["query"]["robots"][0])
     assert len(indices) == 3
     samples = [cache[i] for i in indices]
+    phase("loading frozen DINO teacher")
     teacher, teacher_identity = load_teacher(device)
     with torch.no_grad():
         rgb = target["rgb"].to(device)
@@ -97,6 +176,7 @@ def validate(config_path, output, ddp=False):
         move(target, device),
     )
     backbone = load_dit(config, device)
+    phase("loaded pretrained FLUX; loading adapters and text encoder")
     inject(backbone, config["training"]["rank"], config["training"]["alpha"])
     load_adapter(
         backbone, load_file(str(Path(c["baseline_checkpoint"]) / "lora.safetensors"))
@@ -105,6 +185,7 @@ def validate(config_path, output, ddp=False):
     text = load_text_encoder(config, device)
     model.eval()
     entries = []
+    phase("checking zero-adapter pretrained forward equivalence")
     with torch.no_grad():
         for sample in samples:
             ref = []
@@ -149,6 +230,7 @@ def validate(config_path, output, ddp=False):
     del reference, actual, packed, entries, states, initial, context
     torch.cuda.empty_cache()
     model.train()
+    phase("full two-step method forward/backward")
     torch.cuda.reset_peak_memory_stats()
     generator = torch.Generator(device=device).manual_seed(9 + rank)
     train_model = acc.prepare(model) if acc else model
@@ -159,6 +241,7 @@ def validate(config_path, output, ddp=False):
     else:
         loss.backward()
     torch.cuda.synchronize()
+    phase("checking finite gradients and distributed synchronization")
     bad = [
         n
         for n, p in model.named_parameters()

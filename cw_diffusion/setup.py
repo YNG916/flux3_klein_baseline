@@ -28,6 +28,7 @@ def main():
             str(environment / "bin/python"),
             "install",
             "--no-deps",
+            "--ignore-installed",
             "-r",
             str(root / "requirements-cw.txt"),
         ],

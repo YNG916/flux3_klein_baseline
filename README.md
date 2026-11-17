@@ -1,7 +1,7 @@
 > **方法开发分支：Canonical World Diffusion**
 >
 > 当前分支在已完成的 FLUX baseline 上增加完整的共享世界方法。使用 `./mvwd cw …`；架构、监督边界、独立环境、GPU 验收和训练/续跑命令见 [方法开发说明](docs/cw/README.md)，已验证范围见 [开发状态](docs/cw/STATUS.md)。
-> 原 baseline 的正式结果保持独立；新方法尚不能宣称通过真实 GPU 验收或优于 baseline。
+> 原 baseline 的正式结果保持独立；新方法已通过真实单卡／四卡 H100 前后向验收，尚未开始正式训练或验证质量提升。
 
 # FLUX 3 Image Klein Base × MVWD
 

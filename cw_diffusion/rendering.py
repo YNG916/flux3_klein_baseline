@@ -110,12 +110,16 @@ def render(world, K, c2w, height, width, backend="gsplat", near=0.1, far=15.0):
         a = world.opacity[:, None, None] * torch.exp(-0.5 * exponent)
         a = a * ((z > near) & (z < far))[:, None, None]
         a = a.clamp(0, 0.999)
+        # Match gsplat 1.5.3's rasterizer: discard sub-byte contributions.
+        # Without this, normalizing tiny coverage magnifies harmless tail differences.
+        a = torch.where(a >= 1 / 255, a, torch.zeros_like(a))
         order = z.argsort()
         a = a[order]
         trans = torch.cumprod(torch.cat((torch.ones_like(a[:1]), 1 - a + 1e-10), 0), 0)[
             :-1
         ]
-        weight = a * trans
+        # CUDA terminates before accepting a contribution that crosses this threshold.
+        weight = a * trans * (trans * (1 - a) > 1e-4)
         alpha = weight.sum(0)
         den = alpha.clamp_min(1e-6)
         outputs.append(torch.einsum("nhw,nc->chw", weight, world.features[order]) / den)

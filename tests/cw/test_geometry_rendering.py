@@ -66,6 +66,28 @@ def test_production_renderer_never_silently_falls_back_to_cpu():
         render(world, torch.eye(3)[None], torch.eye(4)[None], 2, 2, "gsplat")
 
 
+def test_reference_matches_cuda_alpha_cutoff_and_exclusive_termination():
+    K = torch.tensor([[[4.0, 0, 0.5], [0, 4.0, 0.5], [0, 0, 1.0]]])
+    T = torch.eye(4)[None]
+
+    def scene(opacities):
+        n = len(opacities)
+        return GaussianWorld(
+            torch.tensor([[0.0, 0, 2.0 + i] for i in range(n)]),
+            torch.tensor([[1.0, 0, 0, 0]]).expand(n, -1),
+            torch.ones(n, 3),
+            torch.tensor(opacities),
+            torch.eye(n),
+            torch.arange(n),
+        )
+
+    tiny = render(scene([0.001]), K, T, 1, 1, "reference")
+    assert tiny.alpha.item() == 0 and tiny.features.sum() == 0
+    saturated = render(scene([0.999, 0.999, 0.8]), K, T, 1, 1, "reference")
+    torch.testing.assert_close(saturated.alpha.flatten(), torch.tensor([0.999]))
+    torch.testing.assert_close(saturated.features.flatten(), torch.tensor([1.0, 0, 0]))
+
+
 def test_full_so3_and_quaternion_roundtrip_with_gradients():
     from cw_diffusion.geometry import (
         rotation_6d,
