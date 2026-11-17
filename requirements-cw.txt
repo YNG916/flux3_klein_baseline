@@ -1,0 +1,4 @@
+# Overlay into a separate environment; native FLUX lock remains unchanged.
+gsplat==1.5.3
+scipy==1.16.3
+jaxtyping==0.3.3

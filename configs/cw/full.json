@@ -1,0 +1,42 @@
+{
+  "baseline_experiment": "/hfs2/work/workspace/scratch/ka_wq8392-multiview/baselines/flux3_klein/artifacts/mvwd/experiments/20261022_l1_full10ep_4h100_v3",
+  "baseline_checkpoint": "/hfs2/work/workspace/scratch/ka_wq8392-multiview/baselines/flux3_klein/artifacts/mvwd/experiments/20261022_l1_full10ep_4h100_v3/training/train_20261025T162706453348/final",
+  "world": {
+    "feature_dim": 128,
+    "hidden_dim": 256,
+    "object_queries": 1536,
+    "gaussians_per_object": 32,
+    "background_side": 24,
+    "background_levels": 4,
+    "decoder_layers": 4,
+    "semantic_classes": 253,
+    "injection_blocks": [
+      7,
+      15,
+      23
+    ],
+    "mvs_depth_bins": 32,
+    "near": 0.1,
+    "far": 15.0,
+    "max_height": 12.0,
+    "geometry_step_fraction": 0.05,
+    "render_backend": "gsplat",
+    "unroll_steps": 2,
+    "checkpoint_blocks": true,
+    "seed": 42,
+    "min_height": -4.0
+  },
+  "training": {
+    "stage": "joint",
+    "epochs": 10,
+    "accumulation": 4,
+    "learning_rate": 0.0001,
+    "checkpoint_every": 500,
+    "validate_each_epoch": true,
+    "workers": 4,
+    "seed": 42,
+    "backbone_learning_rate": 1e-05,
+    "backbone_warmup_updates": 500,
+    "world_size": 4
+  }
+}

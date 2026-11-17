@@ -19,4 +19,18 @@ export OMP_NUM_THREADS="${OMP_NUM_THREADS:-4}"
 export MKL_NUM_THREADS="${MKL_NUM_THREADS:-4}"
 task_python="${FLUX_PYTHON:-$workspace_root/envs/flux3-klein/bin/python}"
 cd -- "$repo_root"
+if [[ "${1:-}" == "cw" ]]; then
+    shift
+    if [[ "${1:-}" == "setup" ]]; then
+        exec "$task_python" -m cw_diffusion.setup
+    fi
+    task_python="${CW_PYTHON:-$workspace_root/envs/cw-diffusion/bin/python}"
+    if [[ -z "${CUDA_HOME:-}" && -x /software/easybuild/x86_64/software/CUDA/13.0.2/bin/nvcc ]]; then
+        export CUDA_HOME="${CW_CUDA_HOME:-/software/easybuild/x86_64/software/CUDA/13.0.2}"
+    fi
+    if [[ -n "${CUDA_HOME:-}" ]]; then export PATH="$CUDA_HOME/bin:$PATH"; fi
+    export MAX_JOBS="${MAX_JOBS:-8}"
+    export TORCH_EXTENSIONS_DIR="$workspace_root/cache/torch_extensions/cw-diffusion"
+    exec "$task_python" -m cw_diffusion.cli "$@"
+fi
 exec "$task_python" -m tools.workflow "$@"
