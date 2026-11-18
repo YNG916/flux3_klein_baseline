@@ -94,6 +94,8 @@ Preparation validates and reuses the old baseline VAE targets/references, comput
 
 All CUDA commands are explicit and use existing `srun --jobid`; no `salloc`/`sbatch` is performed. Keep long runs inside tmux. Run initialization only after GPU-driven code fixes are finished, because all method source, environment, class vocabulary, native cache and initialization contracts are frozen.
 
+For the separately user-authorized batch path, see [budget-aware sbatch resume](BATCH_RESUME.md). That launcher submits one four-GPU batch allocation for the longest feasible time, resumes the same frozen trajectory and requests a complete checkpoint before normal walltime termination. The existing-allocation commands above continue to submit no allocations.
+
 ## Inference and evaluation
 
 ```bash
