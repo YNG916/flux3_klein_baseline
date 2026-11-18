@@ -25,7 +25,7 @@ sbatch --parsable --chdir="$PWD" \
 
 ## 验证范围与可靠性
 
-2026-11-18 全仓库 CPU 回归 **75 passed**；四进程 CPU 测试验证了只有一个 rank 收到停止请求时四个 rank 一致停止，以及原生模型、optimizer、各 rank RNG 的完整保存与恢复。报告在 `artifacts/cw/verification/batch_runtime_20261118/`。
+2026-11-18 全仓库 CPU 回归 **76 passed**；四进程 CPU 测试验证了只有一个 rank 收到停止请求时四个 rank 一致停止，以及原生模型、optimizer、各 rank RNG 的完整保存与恢复。报告在 `artifacts/cw/verification/batch_runtime_20261118/`。
 
 原模型已通过单卡/四卡 H100 前后向验收及约 1,886 次真实更新。这次新增 batch 控制层的真实 H100 调度和提前停止，需要等任务获得资源后再确认，不能把 CPU 测试称为已经通过完整 GPU batch 验证。
 
